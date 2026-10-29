@@ -17,6 +17,39 @@ st.set_page_config(
     page_icon="📊",
     layout="wide",
 )
+st.markdown("""
+    <style>
+        .block-container {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+            max-width: 1400px;
+        }
+
+        [data-testid="stMetric"] {
+            background-color: var(--secondary-background-color);
+            border: 1px solid rgba(128, 128, 128, 0.25);
+            padding: 18px;
+            border-radius: 12px;
+        }
+
+        [data-testid="stMetricLabel"] {
+            font-size: 14px;
+        }
+
+        h1 {
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        h2, h3 {
+            font-weight: 600;
+        }
+
+        section[data-testid="stSidebar"] {
+            border-right: 1px solid rgba(128, 128, 128, 0.2);
+        }
+    </style>
+    """, unsafe_allow_html=True)
 
 st.title("📊 RetailPulse")
 st.caption("E-commerce Sales Analytics & Customer Intelligence")
@@ -186,6 +219,7 @@ try:
         "Countries",
         options=all_countries,
         default=all_countries,
+        placeholder="Search and select countries",
     )
 
     if len(date_range) != 2:
@@ -209,10 +243,22 @@ try:
     st.subheader("Sales Overview")
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Recorded Revenue", f"{kpis['total_revenue']:,.2f}")
-    c2.metric("Invoices", f"{kpis['invoice_count']:,}")
-    c3.metric("Identified Customers", f"{kpis['customer_count']:,}")
-    c4.metric("Revenue per Invoice", f"{kpis['revenue_per_invoice']:,.2f}")
+    c1.metric(
+        "Recorded Revenue",
+        f"{float(kpis['total_revenue']):,.2f}"
+    )
+    c2.metric(
+        "Invoices",
+        f"{int(kpis['invoice_count']):,}"
+    )
+    c3.metric(
+        "Identified Customers",
+        f"{int(kpis['customer_count']):,}"
+    )
+    c4.metric(
+        "Revenue per Invoice",
+        f"{float(kpis['revenue_per_invoice']):,.2f}"
+    )
 
     st.caption(
         f"Showing {start_date:%d %b %Y} – {end_date:%d %b %Y}. "
@@ -257,6 +303,79 @@ try:
             file_name="retailpulse_sales.csv",
             mime="text/csv",
         )
+
+
+
+    st.divider()
+    st.subheader("Explore Sales Transactions")
+
+    @st.cache_data(ttl=300)
+    def get_sales_table(start_date, end_date, selected_countries):
+        return fetch_data("""
+            SELECT
+                invoice_no,
+                stock_code,
+                description,
+                quantity,
+                invoice_date,
+                unit_price,
+                customer_id,
+                country,
+                revenue
+            FROM retail_sales
+            WHERE invoice_date >= :start_date
+            AND invoice_date < (:end_date + INTERVAL '1 day')
+            AND country = ANY(:countries)
+            ORDER BY invoice_date DESC
+            LIMIT 5000
+        """, {
+            "start_date": start_date,
+            "end_date": end_date,
+            "countries": selected_countries,
+        })
+
+    sales_table = get_sales_table(
+        start_date,
+        end_date,
+        selected_countries,
+    )
+
+    st.caption(
+        f"Showing up to 5,000 matching transactions "
+        f"({len(sales_table):,} rows loaded)."
+    )
+
+    search_text = st.text_input(
+        "Search transactions",
+        placeholder="Search invoice, product, or country...",
+    )
+
+    if search_text:
+        search_mask = sales_table.astype(str).apply(
+            lambda column: column.str.contains(
+                search_text, case=False, na=False, regex=False
+            )
+        ).any(axis=1)
+
+        display_table = sales_table[search_mask]
+    else:
+        display_table = sales_table
+
+    st.dataframe(
+        display_table,
+        use_container_width=True,
+        hide_index=True,
+        height=350,
+    )
+
+    st.download_button(
+        "Download displayed transactions",
+        data=display_table.to_csv(index=False).encode("utf-8"),
+        file_name="retailpulse_filtered_sales.csv",
+        mime="text/csv",
+        key="download_sales_table",
+    )
+
     st.divider()
     left, right = st.columns(2)
 
