@@ -219,6 +219,44 @@ try:
         "Revenue represents recorded sales, not profit."
     )
 
+    st.subheader("Download Sales Data")
+
+    if st.button("Prepare CSV Export"):
+        export_query = """
+            SELECT
+                invoice_no,
+                stock_code,
+                description,
+                quantity,
+                invoice_date,
+                unit_price,
+                customer_id,
+                country,
+                revenue
+            FROM retail_sales
+            WHERE invoice_date >= :start_date
+            AND invoice_date < (:end_date + INTERVAL '1 day')
+            AND country = ANY(:countries)
+            ORDER BY invoice_date DESC
+        """
+
+        export_df = fetch_data(
+            export_query,
+            {
+                "start_date": start_date,
+                "end_date": end_date,
+                "countries": selected_countries,
+            },
+        )
+
+        csv_data = export_df.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            label="Download CSV",
+            data=csv_data,
+            file_name="retailpulse_sales.csv",
+            mime="text/csv",
+        )
     st.divider()
     left, right = st.columns(2)
 
